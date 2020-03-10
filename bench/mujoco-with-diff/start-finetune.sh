@@ -1,6 +1,6 @@
 seed=$(( ( RANDOM % 10000 )  + 1 ))
 EPOCHS=200
-EXPERTS="${EXPERTS:-/media/nizam/4a3320e1-9ec5-4b50-953b-53a947b10377/Thesis/experts-policy/TD3}"
+EXPERTS=${1}
 EXPERTS_SEED=993
 
 for A in FT FT-TD3

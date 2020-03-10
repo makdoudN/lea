@@ -22,7 +22,7 @@ actor_optim:
     lr: 1e-3
 
 critic:
-  cls: rltk.nn.mlp_value:MLPActionValue
+  cls: rltk.nn.mlp_value:MLPDoubleActionValue
   kwargs:
     input_nd: ${env.observation_nd}
     action_nd: ${env.action_nd}

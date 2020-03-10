@@ -33,6 +33,7 @@ class RPL(DDPG):
         loss = (qfunc - target).pow(2).mean().mul(0.5)
         if self.logger is not None:
             self.logger.store(loss_critic=np.round(loss.item(), 3))
+        return loss
 
 
     def learn_actor(self, obses):

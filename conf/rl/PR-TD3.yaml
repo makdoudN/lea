@@ -1,0 +1,40 @@
+rl:
+  cls: rl.pr:TD3_PiReuse
+  kwargs:
+      # -----------------
+      # TD3.
+      # -----------------
+      action_noise_clip: 0.5
+      action_noise: 0.2
+      actor_update_freq: 2
+      # ------------------
+      # Policy Reuse.
+      # ------------------
+      pi_reuse: 0.2
+      num_commit: 1
+
+actor:
+  cls: rltk.nn.mlp_deterministic_policy:MLPPolicy
+  kwargs:
+    input_nd: ${env.observation_nd}
+    action_nd: ${env.action_nd}
+    mlp_hidden_len:
+      - 256
+      - 256
+actor_optim:
+  cls: torch.optim:RMSprop
+  kwargs:
+    lr: 1e-3
+
+critic:
+  cls: rltk.nn.mlp_value:MLPDoubleActionValue
+  kwargs:
+    input_nd: ${env.observation_nd}
+    action_nd: ${env.action_nd}
+    mlp_hidden_len:
+      - 256
+      - 256
+critic_optim:
+  cls: torch.optim:RMSprop
+  kwargs:
+    lr: 1e-3

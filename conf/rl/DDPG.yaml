@@ -1,0 +1,28 @@
+rl:
+  cls: rl.ddpg:DDPG
+  kwargs: {}
+actor:
+  cls: rltk.nn.mlp_deterministic_policy:MLPPolicy
+  kwargs:
+    input_nd: ${env.observation_nd}
+    action_nd: ${env.action_nd}
+    mlp_hidden_len:
+      - 256
+      - 256
+actor_optim:
+  cls: torch.optim:RMSprop
+  kwargs:
+    lr: 1e-3
+
+critic:
+  cls: rltk.nn.mlp_value:MLPActionValue
+  kwargs:
+    input_nd: ${env.observation_nd}
+    action_nd: ${env.action_nd}
+    mlp_hidden_len:
+      - 256
+      - 256
+critic_optim:
+  cls: torch.optim:RMSprop
+  kwargs:
+    lr: 1e-3

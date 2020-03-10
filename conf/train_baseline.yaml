@@ -1,0 +1,42 @@
+log_save_interval: false
+experiment: None
+device: cpu
+seed: 1
+
+num_epochs: 500
+num_batches: 1000
+ignore_timeout_done: true
+
+batch_size: 256
+
+common:
+  rl:
+    device: ${device}
+    gamma: 0.99
+    polyak: 0.005
+    action_epsilon_nz: 0.2
+    action_epsilon_rnd: 0.2
+    max_grad_norm: 0.5
+
+memory:
+  kwargs:
+    size: 1_000_000
+
+runner:
+  kwargs:
+    horizon: 10_000
+    random_init: 1_000
+
+env:
+  name: Pendulum-v0
+  loader: gym
+  kwargs: {}
+  observation_nd: ???
+  action_nd: ???
+
+defaults:
+  - rl: DDPG
+
+hydra:
+    run:
+      dir: ./logs/${experiment}/${seed}

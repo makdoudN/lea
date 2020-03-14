@@ -1,0 +1,37 @@
+
+rl:
+  cls: rl.lea_v2:DDPG_LEA
+  kwargs:
+      pi_reuse: 0.1
+      num_commit: 1
+      reuse: false
+      lam_pi_guidance: 1
+      use_q_guidance: true
+      use_pi_guidance: false
+      lam_aux_policy_guidance: 0.1
+      aux_policy_guidance_version: 0
+actor:
+  cls: rltk.nn.mlp_deterministic_policy:MLPPolicy
+  kwargs:
+    input_nd: ${env.observation_nd}
+    action_nd: ${env.action_nd}
+    mlp_hidden_len:
+      - 256
+      - 256
+actor_optim:
+  cls: torch.optim:RMSprop
+  kwargs:
+    lr: 1e-3
+
+critic:
+  cls: rltk.nn.mlp_value:MLPActionValue
+  kwargs:
+    input_nd: ${env.observation_nd}
+    action_nd: ${env.action_nd}
+    mlp_hidden_len:
+      - 256
+      - 256
+critic_optim:
+  cls: torch.optim:RMSprop
+  kwargs:
+    lr: 1e-3

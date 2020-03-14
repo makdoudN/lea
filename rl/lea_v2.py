@@ -36,7 +36,7 @@ class DDPG_LEA(DDPG):
         self.lam_pi_guidance = lam_pi_guidance
         self.count_advice = np.zeros(len(self.library))
         self.lam_aux_policy_guidance = lam_aux_policy_guidance
-        self.aux_policy_guidance_version, aux_policy_guidance_version
+        self.aux_policy_guidance_version = aux_policy_guidance_version
 
     def act(self, obses, mode: str = "train"):
         if mode == "train" and self.in_reuse_mode and self.reuse:

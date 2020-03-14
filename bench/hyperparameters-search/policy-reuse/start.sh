@@ -9,9 +9,9 @@ do
   do
     for TASK in GravityHalf GravityOneAndHalf SmallFoot SmallLeg
     do
-      for nC in 0.0 0.1 0.2 0.5
+      for nC in 1 5 10 25 50
       do
-        for pR in 1 5 10 25 50
+        for pR in 0.0 0.1 0.2 0.5 0.75 1
         do
           tsp python ../../../train.py env.name=${E}${TASK}-v1 rl=${A} \
             num_epochs=${EPOCHS} seed=${seed} experiment=MJ2MJT.Gravity/${A}_${nC}_${pR}/${E}/${TASK} \

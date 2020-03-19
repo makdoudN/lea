@@ -1,4 +1,4 @@
-# Learning from advice.
+# Learning from advice with auxiliary incentive.
 from rltk.common.maths import polyak_averaging
 from .ddpg import DDPG, TD3
 import torch
@@ -6,7 +6,7 @@ import random
 import numpy as np
 
 
-class DDPG_LEA(DDPG):
+class LEA_SOFTMAX(DDPG):
     def __init__(
             self,
             library,
@@ -16,6 +16,8 @@ class DDPG_LEA(DDPG):
             lam_pi_guidance: float = 0.001,
             use_pi_guidance: bool = False,
             use_q_guidance: bool = False,
+            lam_aux_policy_guidance: float = 0.001,
+            aux_policy_guidance_version: int = 0,
             *args, **kwargs):
 
         super().__init__(*args, **kwargs)
@@ -33,6 +35,8 @@ class DDPG_LEA(DDPG):
         self.use_pi_guidance = use_pi_guidance
         self.lam_pi_guidance = lam_pi_guidance
         self.count_advice = np.zeros(len(self.library))
+        self.lam_aux_policy_guidance = lam_aux_policy_guidance
+        self.aux_policy_guidance_version = aux_policy_guidance_version
 
     def act(self, obses, mode: str = "train"):
         if mode == "train" and self.in_reuse_mode and self.reuse:
@@ -70,13 +74,15 @@ class DDPG_LEA(DDPG):
     def filter(self, x, advice):
         # NOTE: MERGE
         if len(x.shape) == 1:
-            index = torch.argmax(
-                torch.cat([self.targets.critic(x, a) for a in advice])
-            ).item()
+            m = torch.cat([self.targets.critic(x, a) for a in advice])
+            index = torch.distributions.Categorical(logits=m).sample()
             return advice[index].detach().cpu().numpy(), index
-        q = torch.stack([self.targets.critic(x, a) for a in advice])
-        index = torch.argmax(q, dim=0)
+        q = torch.stack([self.targets.critic(x, a) for a in advice], -1)
+        index = torch.distributions.Categorical(logits=q).sample()
         advice = torch.stack(advice)
+        #print(advice.shape)
+        #print(index.shape)
+        #raise
         best_advice = advice[index.squeeze(-1), range(advice.shape[1])]
         return best_advice, index
 
@@ -124,126 +130,30 @@ class DDPG_LEA(DDPG):
         q_sa = self.models.critic(obses, action)
         loss = q_sa.mean().neg()
         loss += action_penalty
-        # NOTE: EXPERIMENTAL + RESEARCH UNCODE. -------------------
-        #if self.use_q_guidance:
-        #    advice = [advisor(obses) for advisor in self.library]
-        #    q_sa = torch.stack([self.targets.critic(obses, a) for a in advice])
-        #    q_sa_max = torch.max(q_sa, dim=0)[0]
-        #    loss = loss + 0.5 * (q_sa - q_sa_max).pow(2).mean()
-        # ---------------------------------------------------------
-        if self.use_pi_guidance:
+        # Auxiliary Incentive to surpass Experts. --------------------------------------
+        if self.use_q_guidance:
             advice = [advisor(obses) for advisor in self.library]
-            best_advice, index = self.filter(obses, advice)
-            loss_pi_guidance = self.lam_pi_guidance * \
-                (action - best_advice).sum().pow(2).mul(0.5)
-            assert loss.shape == loss_pi_guidance.shape
-            loss = loss + loss_pi_guidance
-            if self.logger is not None:
-                self.logger.store(loss_pi_guidance=np.round(loss_pi_guidance.item(), 3))
-        if self.logger is not None:
-            self.logger.store(loss_actor=np.round(loss.item(), 3))
-        return loss
-
-
-class TD3_LEA(DDPG_LEA):
-    def __init__(
-        self,
-        action_noise_clip: float = 0.5,
-        action_noise: float = 0.2,
-        actor_update_freq: int = 2,
-        *args,
-        **kwargs,
-    ):
-
-        super().__init__(*args, **kwargs)
-        self.action_noise = action_noise
-        self.action_noise_clip = action_noise_clip
-        self.actor_update_freq = actor_update_freq
-        self.num_updates = 0
-
-    @torch.no_grad()
-    def filter(self, x, advice):
-        if len(x.shape) == 1:
-            index = torch.argmax(
-                torch.cat([
-                    torch.min(torch.stack(self.targets.critic(x, a)), dim=0)[0] for a in advice])
-            ).item()
-            return advice[index].detach().cpu().numpy(), index
-        q = torch.stack([
-            torch.stack(self.targets.critic(x, a)).min(0)[0] for a in advice])
-        index = torch.argmax(q, dim=0)
-        advice = torch.stack(advice)
-        best_advice = advice[index.squeeze(-1), range(advice.shape[1])]
-        return best_advice, index
-
-    def learn_actor(self, obses):
-        action = self.models.actor(obses)
-        action_penalty = self.action_penalty_lam * action.pow(2).mean()
-        q_sa = self.models.critic(obses, action)[0]
-        loss = q_sa.mean().neg()
-        loss += action_penalty
-        if self.use_pi_guidance:
-            advice = [advisor(obses) for advisor in self.library]
-            best_advice, index = self.filter(obses, advice)
-            loss_pi_guidance = self.lam_pi_guidance * \
-                (action - best_advice).sum().pow(2).mul(0.5)
-            assert loss.shape == loss_pi_guidance.shape
-            loss = loss + loss_pi_guidance
-            if self.logger is not None:
-                self.logger.store(loss_pi_guidance=np.round(loss_pi_guidance.item(), 3))
-        if self.logger is not None:
-            self.logger.store(loss_actor=np.round(loss.item(), 3))
-        return loss
-
-    def learn_critic(self, obses, reward, action, mask, next_obses):
-        with torch.no_grad():
-            if not self.use_q_guidance:
-                next_action = self.targets.actor(next_obses)
+            if self.aux_policy_guidance_version == 0:
+                q_sa = torch.stack([self.targets.critic(obses, a) for a in advice])
+                q_sa_max = torch.max(q_sa, dim=0)[0]
+                loss = loss + self.lam_aux_policy_guidance  * (q_sa - q_sa_max).pow(2).mean()
+            elif self.lam_aux_policy_guidance == 1:
+                raise # APPLY WITH SOFTMAX
+                q_sa = torch.stack([self.targets.critic(obses, a) for a in advice])
+                q_sa_max = torch.max(q_sa, dim=0)[0]
+                loss = loss + self.lam_aux_policy_guidance  * (q_sa - q_sa_max).pow(2).mean()
             else:
-                advice = [advisor(next_obses) for advisor in self.library]
-                next_action, _ = self.filter(next_obses, advice)
-            action_noise = next_action.data.clone().normal_(0, self.action_noise)
-            action_noise = action_noise.clamp(
-                -self.action_noise_clip, self.action_noise_clip
-            )
-            #  We assume action_space is normalized to one.
-            next_action = torch.clamp(next_action + action_noise, -1, 1)
-            next_qfunc = torch.min(*self.targets.critic(next_obses, next_action))
-            target = reward + self.gamma * mask * next_qfunc.squeeze(1)
-        qfunc_1, qfunc_2 = self.models.critic(obses, action)
-        loss = (qfunc_1.squeeze(1) - target).pow(2).mean().mul(0.5) + (
-            qfunc_2.squeeze(1) - target
-        ).pow(2).mean().mul(0.5)
+                raise NotImplementedError()
+        # -------------------------------------------------------------------------------
+        if self.use_pi_guidance:
+            advice = [advisor(obses) for advisor in self.library]
+            best_advice, index = self.filter(obses, advice)
+            loss_pi_guidance = self.lam_pi_guidance * \
+                (action - best_advice).sum().pow(2).mul(0.5)
+            assert loss.shape == loss_pi_guidance.shape
+            loss = loss + loss_pi_guidance
+            if self.logger is not None:
+                self.logger.store(loss_pi_guidance=np.round(loss_pi_guidance.item(), 3))
         if self.logger is not None:
-            self.logger.store(loss_critic=np.round(loss.item(), 3))
+            self.logger.store(loss_actor=np.round(loss.item(), 3))
         return loss
-
-    def update(self, obses, action, reward, mask, next_obses):
-        if self.num_updates % self.actor_update_freq == 0:
-            loss_actor = self.learn_actor(obses)
-        loss_critic = self.learn_critic(obses, reward, action, mask, next_obses)
-        if self.logger is not None:
-            self.logger.store(loss_critic=np.round(loss_critic.item(), 3))
-
-        self.optims.critic.zero_grad()
-        loss_critic.backward()
-        if self.max_grad_norm > 0.0:
-            torch.nn.utils.clip_grad_norm_(
-                self.models.critic.parameters(), self.max_grad_norm, norm_type=2
-            )
-        self.optims.critic.step()
-
-        if self.num_updates % self.actor_update_freq == 0:
-            self.optims.actor.zero_grad()
-            loss_actor.backward()
-            if self.max_grad_norm > 0.0:
-                torch.nn.utils.clip_grad_norm_(
-                    self.models.actor.parameters(), self.max_grad_norm, norm_type=2
-                )
-            self.optims.actor.step()
-            for k, v in self.targets.items():
-                polyak_averaging(self.models[k], v, tau=self.polyak)
-                if self.logger is not None:
-                    self.logger.store(loss_actor=np.round(loss_actor.item(), 3))
-
-
